@@ -4,6 +4,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:controls="clr-namespace:Kitesurf.Windows.Controls"
         Title="Kitesurf Browser"
+        Icon="pack://application:,,,/Assets/app.ico"
         Width="1280" Height="860" MinWidth="900" MinHeight="560"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource WindowBrush}"
