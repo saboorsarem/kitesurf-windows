@@ -33,3 +33,20 @@ Resilience, telemetry, and debugging tools.
 
 `--selftest` now covers endpoint discovery and telemetry as well: 19 checks, run in CI on every push
 and on every release.
+
+## Verify your download
+
+```
+SHA-256 (KitesurfBrowser.exe) = 021b48f0392abf573783a53d96ed0b09ee33871cf70176dc75838ba078401f87
+```
+
+From PowerShell, in the folder that holds the download:
+
+```powershell
+cd $env:USERPROFILE\Downloads
+$expected = (Get-Content .\SHA256SUMS.txt) -split '\s+' | Select-Object -First 1
+(Get-FileHash .\KitesurfBrowser.exe -Algorithm SHA256).Hash -eq $expected
+```
+
+`SHA256SUMS.txt` is attached to this release. A `Resolve-Path` error means the shell is in a different
+folder than the download, not that the file is corrupt.
