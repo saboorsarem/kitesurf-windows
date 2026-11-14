@@ -1,4 +1,4 @@
-Kitesurf Browser for Windows 1.2.1
+Kitesurf Browser for Windows 1.2.2
 =================================
 
 A native Windows client for the Kitesurf browser engine (github.com/cloudflare/kitesurf).
