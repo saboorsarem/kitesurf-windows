@@ -1,0 +1,106 @@
+<UserControl x:Class="Kitesurf.Windows.Controls.ConsolePane"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{StaticResource PanelBrush}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="44" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Margin="14,0,10,0">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="Console" FontFamily="{StaticResource UiFont}" FontSize="12.5" FontWeight="SemiBold"
+                           Foreground="{StaticResource InkBrush}" />
+                <Border CornerRadius="4" Background="#1A2432" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding SelectedTab.Console.Count}" FontFamily="{StaticResource UiFont}" FontSize="10"
+                               Foreground="{StaticResource InkDimBrush}" />
+                </Border>
+            </StackPanel>
+            <Button HorizontalAlignment="Right" Style="{StaticResource NavButton}" Width="26" Height="26"
+                    Click="Clear_Click" ToolTip="Clear console">
+                <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12" />
+            </Button>
+        </Grid>
+
+        <Border Grid.Row="1" BorderBrush="{StaticResource LineSoftBrush}" BorderThickness="0,1,0,0">
+            <Grid>
+                <TextBlock Text="Page messages appear here." HorizontalAlignment="Center" VerticalAlignment="Center"
+                           FontFamily="{StaticResource UiFont}" FontSize="12" Foreground="{StaticResource InkMutedBrush}" />
+
+                <ListBox x:Name="Entries" ItemsSource="{Binding SelectedTab.Console}" Background="Transparent"
+                         BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                         Padding="6,6,4,6">
+                    <ListBox.Resources>
+                        <Style TargetType="ScrollBar" BasedOn="{StaticResource SlimScrollBar}" />
+                    </ListBox.Resources>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Focusable" Value="False" />
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="Margin" Value="0" />
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <ContentPresenter />
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="8,3">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Timestamp, StringFormat='HH:mm:ss'}" FontFamily="{StaticResource MonoFont}"
+                                           FontSize="10.5" Foreground="#4E5B6E" VerticalAlignment="Top" Margin="0,1,10,0" />
+                                <TextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap" FontFamily="{StaticResource MonoFont}"
+                                           FontSize="11.5" Foreground="{StaticResource InkDimBrush}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{StaticResource InkDimBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Level}" Value="error">
+                                                    <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Level}" Value="warning">
+                                                    <Setter Property="Foreground" Value="{StaticResource WarnBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Level}" Value="result">
+                                                    <Setter Property="Foreground" Value="{StaticResource MintBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" BorderBrush="{StaticResource LineSoftBrush}" BorderThickness="0,1,0,0" Padding="12,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="›" FontFamily="{StaticResource MonoFont}" FontSize="14" Foreground="{StaticResource AccentBrush}"
+                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBox x:Name="CommandBox" Grid.Column="1" Style="{StaticResource OmniBox}" FontFamily="{StaticResource MonoFont}"
+                         KeyDown="CommandBox_KeyDown" ToolTip="Run JavaScript in the page (Runtime.evaluate)" />
+                <Button Grid.Column="2" Content="Run" Style="{StaticResource GhostButton}" Height="28" Padding="12,0"
+                        Margin="8,0,0,0" Click="Run_Click" FontSize="11.5" />
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

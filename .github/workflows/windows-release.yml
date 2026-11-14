@@ -1,0 +1,77 @@
+name: Windows Build & Release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [published]
+
+# The release job uploads an asset with GITHUB_TOKEN, which needs write access.
+permissions:
+  contents: write
+
+jobs:
+  build-and-selftest:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build Release
+        run: dotnet build -c Release
+
+      - name: Publish Single-File EXE
+        run: >
+          dotnet publish -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:DebugType=none
+          -o ./publish
+
+      - name: Run Headless CDP Self-Test
+        shell: pwsh
+        run: |
+          $report = Join-Path $env:TEMP 'kitesurf-selftest.json'
+          Remove-Item $report -ErrorAction SilentlyContinue
+
+          # A GUI-subsystem executable returns to the pipeline immediately; Start-Process waits.
+          $run = Start-Process -FilePath './publish/KitesurfBrowser.exe' -ArgumentList '--selftest' -Wait -PassThru
+          $code = $run.ExitCode
+          Write-Host "selftest exited with $code"
+
+          $log = Join-Path $env:APPDATA 'KitesurfBrowser\client.log'
+          if (Test-Path $log) {
+            Write-Host '--- client.log (tail) ---'
+            Get-Content $log -Tail 40
+          } else {
+            Write-Host 'no client.log was written'
+          }
+
+          if (Test-Path $report) {
+            Write-Host '--- report ---'
+            Get-Content $report
+          } else {
+            Write-Host 'no selftest report was written'
+          }
+
+          exit $code
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KitesurfBrowser-win-x64
+          path: publish/KitesurfBrowser.exe
+          if-no-files-found: error
+
+      - name: Attach EXE to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: publish/KitesurfBrowser.exe
