@@ -66,21 +66,21 @@
                         <Expander Style="{StaticResource DarkExpander}" IsExpanded="{Binding AccessExpanded, Mode=TwoWay}"
                                   Header="Cloudflare Access service token (optional, for deployed Workers)">
                             <StackPanel>
-                                <TextBlock Text="CF-Access-Client-Id" FontSize="11.5" Foreground="{StaticResource InkDimBrush}"
+                                <TextBlock Text="CF-Access-Client-Id" FontSize="12" Foreground="{StaticResource InkBrush}"
                                            FontFamily="{StaticResource UiFont}" />
                                 <TextBox Style="{StaticResource FieldBox}" Height="34" Margin="0,5,0,0"
                                          FontFamily="{StaticResource MonoFont}" FontSize="12.5"
                                          AutomationProperties.Name="CF Access client id"
                                          Text="{Binding AccessClientId, UpdateSourceTrigger=PropertyChanged}" />
 
-                                <TextBlock Text="CF-Access-Client-Secret" FontSize="11.5" Margin="0,12,0,0"
-                                           Foreground="{StaticResource InkDimBrush}" FontFamily="{StaticResource UiFont}" />
+                                <TextBlock Text="CF-Access-Client-Secret" FontSize="12" Margin="0,12,0,0"
+                                           Foreground="{StaticResource InkBrush}" FontFamily="{StaticResource UiFont}" />
                                 <PasswordBox x:Name="AccessSecretBox" Style="{StaticResource PasswordField}" Margin="0,5,0,0"
                                              AutomationProperties.Name="CF Access client secret"
                                              PasswordChanged="AccessSecretBox_PasswordChanged" />
 
-                                <TextBlock Margin="0,10,0,0" TextWrapping="Wrap" FontSize="11" LineHeight="16"
-                                           Foreground="{StaticResource InkMutedBrush}"
+                                <TextBlock Margin="0,10,0,0" TextWrapping="Wrap" FontSize="11.5" LineHeight="17"
+                                           Foreground="{StaticResource InkDimBrush}"
                                            Text="Required when the Worker is behind Cloudflare Zero Trust. The secret is encrypted with Windows DPAPI before it is written to settings.json, and is never logged." />
                             </StackPanel>
                         </Expander>
