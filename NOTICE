@@ -8,3 +8,9 @@ under the Apache License 2.0.
 The Windows client in this repository is an independent implementation: it
 speaks the engine's Chrome DevTools Protocol endpoint and ships no engine
 code, no Chromium and no WebView2 runtime.
+
+Application icon: "Kitesurf" logo, from the upstream Kitesurf project
+(https://github.com/cloudflare/kitesurf/blob/main/.github/assets/kitesurf_logo.png).
+The Kitesurf name and logo are trademarks of Cloudflare, Inc., used here only
+to identify the engine this client connects to. They are not covered by the
+Apache License, and this project claims no ownership of them.

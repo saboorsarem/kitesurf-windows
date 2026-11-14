@@ -1,4 +1,4 @@
-Kitesurf Browser for Windows 1.1.0
+Kitesurf Browser for Windows 1.1.1
 =================================
 
 A native Windows client for the Kitesurf browser engine (github.com/cloudflare/kitesurf).
@@ -71,3 +71,6 @@ patch pages, and it never falls back to WebView2.
 LICENSE
 -------
 Apache 2.0. See LICENSE.txt in this folder, or the repository's LICENSE file.
+
+The application icon is the upstream Kitesurf logo. The Kitesurf name and logo are trademarks of
+Cloudflare, Inc., used to identify the engine this client connects to; see NOTICE.txt.

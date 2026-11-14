@@ -152,3 +152,5 @@ Kitesurf is an experimental engine implementing a targeted subset of CDP:
 ## License
 
 Licensed under the **Apache License 2.0**, matching the upstream [cloudflare/kitesurf](https://github.com/cloudflare/kitesurf) repository. See `LICENSE` for details.
+
+The application icon is the upstream [Kitesurf logo](https://github.com/cloudflare/kitesurf/blob/main/.github/assets/kitesurf_logo.png). The Kitesurf name and logo are trademarks of Cloudflare, Inc., used here to identify the engine this client connects to; they are not covered by the Apache License. See `NOTICE`.
