@@ -67,6 +67,8 @@ Access checks each one. Create the token under Zero Trust → Access → Service
 the **Service Auth** action that allows it. The secret is encrypted with Windows DPAPI (current user)
 before it reaches `settings.json`, is masked in the UI, and never appears in `client.log`.
 
+![Cloudflare Access service token panel](docs/access-token.png)
+
 ---
 
 ## CLI Flags & Local Storage
@@ -137,6 +139,21 @@ The standalone executable outputs to `bin/Release/net8.0-windows/win-x64/publish
 `.github/workflows/windows-release.yml` builds the client on every push to `main` and on pull requests,
 runs `--selftest` on the runner, and uploads the executable as a build artifact. Publishing a GitHub
 Release attaches the compiled `KitesurfBrowser.exe` to that release automatically.
+
+## Verifying a download
+
+Every release attaches `SHA256SUMS.txt` next to the executable. From PowerShell, in the folder that
+holds the download:
+
+```powershell
+cd $env:USERPROFILE\Downloads
+$expected = (Get-Content .\SHA256SUMS.txt) -split '\s+' | Select-Object -First 1
+(Get-FileHash .\KitesurfBrowser.exe -Algorithm SHA256).Hash -eq $expected
+```
+
+That prints `True` for an intact download. `Get-FileHash` resolves a relative path against the current
+directory, so `Resolve-Path : Cannot find path 'C:\Users\<you>\KitesurfBrowser.exe'` means you are in
+the wrong folder, not that the file is corrupt — `cd` into the download folder, or pass the full path.
 
 ---
 
