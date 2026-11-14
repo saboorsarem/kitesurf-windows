@@ -102,6 +102,34 @@ public sealed class EngineEndpoint
         return $"{HttpBase}/?url={Uri.EscapeDataString(pageUrl)}";
     }
 
+    /// <summary>Returns a copy of this endpoint whose page socket came from engine discovery.</summary>
+    public EngineEndpoint WithPageSocket(string? pageSocketUrl) =>
+        new(HttpBase, string.IsNullOrWhiteSpace(pageSocketUrl) ? PageSocketUrl : pageSocketUrl, BrowserSocketUrl);
+
+    /// <summary>
+    /// Engines report their socket URL as ws(s)://, http(s):// or a relative path, and a Worker behind
+    /// TLS must be reached over wss even if it names ws. Normalise all three into a usable URL.
+    /// </summary>
+    public string NormalizeSocketUrl(string? reported, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(reported)) return fallback;
+
+        var text = reported.Trim();
+        if (!text.Contains("://", StringComparison.Ordinal))
+            return text.StartsWith('/') ? HttpBase + text : $"{HttpBase}/{text}";
+
+        if (!Uri.TryCreate(text, UriKind.Absolute, out var uri)) return fallback;
+
+        var scheme = IsSecure ? "wss" : "ws";
+        var builder = new UriBuilder(uri)
+        {
+            Scheme = scheme,
+            Port = uri.IsDefaultPort ? -1 : uri.Port,
+        };
+
+        return builder.Uri.ToString();
+    }
+
     public override string ToString() => HttpBase;
 
     /// <summary>The Cloudflare Access headers both the probe and the socket upgrade must carry.</summary>
@@ -120,7 +148,14 @@ public sealed class EngineEndpoint
     }
 }
 
-public sealed record EngineInfo(bool Ok, string Browser, string ProtocolVersion, long LatencyMs, string? Error)
+public sealed record EngineInfo(
+    bool Ok,
+    string Browser,
+    string ProtocolVersion,
+    long LatencyMs,
+    string? Error,
+    string? PageSocketUrl = null,
+    string? BrowserSocketUrl = null)
 {
     public static EngineInfo Unreachable(string error) => new(false, string.Empty, string.Empty, 0, error);
 }
@@ -153,8 +188,7 @@ public static class EngineProbe
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, $"{endpoint.HttpBase}/json/version");
-            foreach (var (name, value) in EngineEndpoint.AccessHeaders(profile) ?? new Dictionary<string, string>())
-                request.Headers.TryAddWithoutValidation(name, value);
+            AttachAccessToken(request, profile);
 
             using var response = await client
                 .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
@@ -180,7 +214,19 @@ public static class EngineProbe
 
             var browser = root.TryGetProperty("Browser", out var browserProperty) ? browserProperty.GetString() ?? "Kitesurf" : "Kitesurf";
             var protocol = root.TryGetProperty("Protocol-Version", out var protocolProperty) ? protocolProperty.GetString() ?? "?" : "?";
-            return new EngineInfo(true, browser, protocol, started.ElapsedMilliseconds, null);
+            var browserSocket = root.TryGetProperty("webSocketDebuggerUrl", out var browserWs) ? browserWs.GetString() : null;
+
+            // Prefer the routes the engine advertises; fall back to the documented path.
+            var pageSocket = await DiscoverPageSocketAsync(client, endpoint, profile, cancellationToken).ConfigureAwait(false);
+
+            return new EngineInfo(
+                true,
+                browser,
+                protocol,
+                started.ElapsedMilliseconds,
+                null,
+                endpoint.NormalizeSocketUrl(pageSocket, endpoint.PageSocketUrl),
+                endpoint.NormalizeSocketUrl(browserSocket, endpoint.BrowserSocketUrl));
         }
         catch (JsonException)
         {
@@ -190,6 +236,53 @@ public static class EngineProbe
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException or UriFormatException)
         {
             return EngineInfo.Unreachable(Describe(error, endpoint));
+        }
+    }
+
+    private static void AttachAccessToken(HttpRequestMessage request, EngineProfile? profile)
+    {
+        foreach (var (name, value) in EngineEndpoint.AccessHeaders(profile) ?? new Dictionary<string, string>())
+            request.Headers.TryAddWithoutValidation(name, value);
+    }
+
+    /// <summary>Reads /json/list and returns the first page target's socket URL, if the engine publishes one.</summary>
+    private static async Task<string?> DiscoverPageSocketAsync(
+        HttpClient client,
+        EngineEndpoint endpoint,
+        EngineProfile? profile,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{endpoint.HttpBase}/json/list");
+            AttachAccessToken(request, profile);
+
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return null;
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (document.RootElement.ValueKind != JsonValueKind.Array) return null;
+
+            var fallback = (string?)null;
+            foreach (var target in document.RootElement.EnumerateArray())
+            {
+                if (!target.TryGetProperty("webSocketDebuggerUrl", out var socketProperty)) continue;
+                if (socketProperty.GetString() is not { Length: > 0 } socket) continue;
+
+                var isPage = !target.TryGetProperty("type", out var typeProperty)
+                             || string.Equals(typeProperty.GetString(), "page", StringComparison.OrdinalIgnoreCase);
+
+                if (isPage) return socket;
+                fallback ??= socket;
+            }
+
+            return fallback;
+        }
+        catch (Exception)
+        {
+            // Discovery is additive: a static route still works when /json/list is absent.
+            return null;
         }
     }
 

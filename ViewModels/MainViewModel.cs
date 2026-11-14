@@ -36,6 +36,7 @@ public sealed class MainViewModel : ObservableObject
     private bool _accessExpanded;
     private string _statusHint = "Connect a Kitesurf engine to start browsing.";
     private string _viewportText = "—";
+    private string _telemetryText = "—";
     private long _engineLatency;
     private bool _sessionRestored;
 
@@ -77,6 +78,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (!string.IsNullOrEmpty(SelectedTab?.Url)) Clipboard.SetText(SelectedTab.Url);
         });
+        CopyFrameCommand = new RelayCommand(() => _ = CopyFrameAsync(), () => SelectedTab is not null);
         SelectTabCommand = new RelayCommand(parameter =>
         {
             if (parameter is TabViewModel tab) SelectedTab = tab;
@@ -115,6 +117,8 @@ public sealed class MainViewModel : ObservableObject
 
     public RelayCommand CopyUrlCommand { get; }
 
+    public RelayCommand CopyFrameCommand { get; }
+
     public RelayCommand SelectTabCommand { get; }
 
     public AppSettings Settings => _settings;
@@ -141,6 +145,7 @@ public sealed class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(CanEditAddress));
             Address = value?.Url ?? string.Empty;
             UpdateViewportText();
+            if (value is null) TelemetryText = "—";
             CommandManager.InvalidateRequerySuggested();
         }
     }
@@ -255,6 +260,12 @@ public sealed class MainViewModel : ObservableObject
         private set => Set(ref _viewportText, value);
     }
 
+    public string TelemetryText
+    {
+        get => _telemetryText;
+        private set => Set(ref _telemetryText, value);
+    }
+
     public long EngineLatency
     {
         get => _engineLatency;
@@ -292,7 +303,7 @@ public sealed class MainViewModel : ObservableObject
             return false;
         }
 
-        _endpoint = endpoint;
+        _endpoint = endpoint.WithPageSocket(probe.PageSocketUrl);
         _activeProfile = profile.Clone();
         EngineName = profile.Name;
         EngineDetail = $"{probe.Browser} · protocol {probe.ProtocolVersion}" + (profile.HasAccessToken ? " · CF Access" : "");
@@ -487,7 +498,12 @@ public sealed class MainViewModel : ObservableObject
 
     public void NotifyFrame(TabViewModel tab)
     {
-        if (ReferenceEquals(tab, SelectedTab)) UpdateViewportText();
+        if (!ReferenceEquals(tab, SelectedTab)) return;
+
+        UpdateViewportText();
+        TelemetryText = tab.Fps <= 0
+            ? "—"
+            : $"{tab.Fps:0} fps · {tab.FrameIntervalMs:0} ms";
     }
 
     public async Task ShutdownAsync()
@@ -500,6 +516,20 @@ public sealed class MainViewModel : ObservableObject
             await _demoEngine.DisposeAsync();
             _demoEngine = null;
         }
+    }
+
+    private async Task CopyFrameAsync()
+    {
+        var tab = SelectedTab;
+        if (tab is null) return;
+
+        if (!await tab.CopyFrameToClipboardAsync())
+        {
+            ToastRequested?.Invoke("The engine returned no frame to copy.");
+            return;
+        }
+
+        ToastRequested?.Invoke("Frame copied to the clipboard.");
     }
 
     private void RememberEngine(EngineProfile profile)

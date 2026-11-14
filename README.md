@@ -35,6 +35,10 @@ This project provides a **dedicated native Windows client** that connects direct
 | **Live JS Console** | Streams `Runtime.consoleAPICalled` and `Runtime.exceptionThrown` events and supports interactive `Runtime.evaluate` execution. |
 | **Engine Manager** | Probes `/json/version`, saves multiple local or remote Worker endpoints, auto-reconnects on launch, and surfaces clear connection diagnostics. |
 | **Built-in Demo & Self-Test** | Ships with an embedded synthetic CDP engine (`--demo`) and an automated headless protocol verifier (`--selftest`). |
+| **Auto-Reconnect** | A dropped socket walks 1s → 2s → 4s → 8s → 15s, keeps the tab's URL and history, and reports each attempt in the page overlay. |
+| **Frame Telemetry** | The status bar shows resolution, frames per second and the ack-to-next-frame interval, measured per session. |
+| **Raw CDP Inspector** | The `CDP` toggle in the console echoes every JSON-RPC request and event, which turns the client into a debugging tool for the engine itself. |
+| **Clipboard Frames** | `Ctrl+Shift+S` copies the engine's `Page.captureScreenshot` render straight to the Windows clipboard. |
 | **Zero-Fallback Architecture** | Renders strictly what Kitesurf's Blitz/Stylo/Boa pipeline produces—never falls back to WebView2 or embedded Chromium. |
 
 ---
@@ -92,6 +96,7 @@ Configuration and diagnostic logs are stored locally in `%APPDATA%\KitesurfBrows
 | `Ctrl+R` or `F5` | Reload current page |
 | ``Ctrl+` `` | Toggle the live JavaScript console drawer |
 | `Ctrl+Tab` | Switch to next tab |
+| `Ctrl+Shift+S` | Copy the current frame to the clipboard |
 | `Alt+←` / `Alt+→` | Navigate back / forward |
 | `F12` or `Ctrl+Shift+I` | Open the engine's DevTools inspector in your system browser |
 

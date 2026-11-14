@@ -33,6 +33,7 @@ public sealed class DemoEngine : IAsyncDisposable
     private readonly WebApplication _app;
     private readonly bool _requireAccessToken;
     private readonly AccessLog _log = new();
+    private readonly List<WebSocket> _sockets = new();
     private EngineEndpoint _endpoint = null!;
 
     private DemoEngine(WebApplication app, bool requireAccessToken)
@@ -99,6 +100,27 @@ public sealed class DemoEngine : IAsyncDisposable
             socketHadSecret = engine.LastSocketHadSecret,
         }));
 
+        // Test hook: drop every live page socket, the way a Worker idle timeout would.
+        app.MapPost("/demo/drop", async () =>
+        {
+            WebSocket[] sockets;
+            lock (engine._sockets) sockets = engine._sockets.ToArray();
+
+            foreach (var socket in sockets)
+            {
+                try
+                {
+                    await socket.CloseAsync(WebSocketCloseStatus.EndpointUnavailable, "demo: dropped", CancellationToken.None);
+                }
+                catch
+                {
+                    // Already gone.
+                }
+            }
+
+            return Results.Json(new { dropped = sockets.Length });
+        });
+
         app.Map("/devtools/page/kitesurf", async context =>
         {
             engine._log.RecordSocket(context);
@@ -116,8 +138,17 @@ public sealed class DemoEngine : IAsyncDisposable
             }
 
             using var socket = await context.WebSockets.AcceptWebSocketAsync();
-            var session = new DemoPageSession(socket, context.RequestAborted);
-            await session.RunAsync();
+            lock (engine._sockets) engine._sockets.Add(socket);
+
+            try
+            {
+                var session = new DemoPageSession(socket, context.RequestAborted);
+                await session.RunAsync();
+            }
+            finally
+            {
+                lock (engine._sockets) engine._sockets.Remove(socket);
+            }
         });
 
         await app.StartAsync(cancellationToken).ConfigureAwait(false);

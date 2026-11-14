@@ -59,6 +59,11 @@ public sealed class CdpClient : IAsyncDisposable
 
     public bool IsOpen => _socket.State == WebSocketState.Open;
 
+    /// <summary>When true, every frame sent and received is echoed on <see cref="TrafficObserved"/>.</summary>
+    public bool TraceTraffic { get; set; }
+
+    public event Action<string, string>? TrafficObserved;
+
     public event Action<CdpEvent>? EventReceived;
 
     /// <summary>Raised once when the session ends; the argument is the close reason, if any.</summary>
@@ -127,6 +132,8 @@ public sealed class CdpClient : IAsyncDisposable
             {
                 _sendLock.Release();
             }
+
+            if (TraceTraffic) RaiseTraffic("tx", payload);
 
             using var registration = cancellationToken.Register(() =>
             {
@@ -233,6 +240,8 @@ public sealed class CdpClient : IAsyncDisposable
         using (document)
         {
             var root = document.RootElement;
+
+            if (TraceTraffic) RaiseTraffic("rx", utf8);
             if (root.TryGetProperty("id", out var idProperty) && idProperty.TryGetInt32(out var id))
             {
                 if (!_pending.TryRemove(id, out var completion)) return;
@@ -259,6 +268,17 @@ public sealed class CdpClient : IAsyncDisposable
                 try { raised(new CdpEvent(method, parameters)); } catch { /* a listener fault must not kill the socket */ }
             }
         }
+    }
+
+    private void RaiseTraffic(string direction, ReadOnlySpan<byte> utf8)
+    {
+        var hosted = TrafficObserved;
+        if (hosted is null) return;
+
+        var text = Encoding.UTF8.GetString(utf8);
+        if (text.Length > 4000) text = text[..4000] + "…";
+
+        try { hosted(direction, text); } catch { /* a listener fault must not kill the socket */ }
     }
 
     private void FailPending(string reason)

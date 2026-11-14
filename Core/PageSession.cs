@@ -2,6 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 // https://opensource.org/licenses/Apache-2.0
 
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Windows.Media.Imaging;
@@ -32,6 +33,9 @@ public sealed class PageSession : IAsyncDisposable
     private string? _currentUrl;
     private string? _currentTitle;
     private bool _loggedFirstFrame;
+    private long _lastAckTimestamp;
+    private double _frameIntervalMs;
+    private readonly Queue<long> _frameWindow = new();
 
     public PageSession(EngineEndpoint endpoint, EngineProfile? profile = null)
     {
@@ -44,6 +48,25 @@ public sealed class PageSession : IAsyncDisposable
     public string? CurrentTitle => _currentTitle;
 
     public bool IsConnected => _client?.IsOpen == true;
+
+    /// <summary>Frames per second over the last two seconds of the screencast.</summary>
+    public double Fps { get; private set; }
+
+    /// <summary>Time between the ack of one frame and the arrival of the next, in milliseconds.</summary>
+    public double FrameIntervalMs => _frameIntervalMs;
+
+    /// <summary>Echoes raw CDP traffic on <see cref="TrafficObserved"/> while enabled.</summary>
+    public bool TraceTraffic
+    {
+        get => _client?.TraceTraffic ?? false;
+        set
+        {
+            if (_client is null) return;
+            _client.TraceTraffic = value;
+        }
+    }
+
+    public event Action<string, string>? TrafficObserved;
 
     public event Action<ScreencastFrame>? FrameArrived;
 
@@ -62,6 +85,7 @@ public sealed class PageSession : IAsyncDisposable
         var client = new CdpClient(_endpoint.PageSocketUrl, EngineEndpoint.AccessHeaders(_profile));
         client.EventReceived += OnEvent;
         client.Closed += OnClosed;
+        client.TrafficObserved += (direction, payload) => TrafficObserved?.Invoke(direction, payload);
 
         await client.ConnectAsync(TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(false);
         _client = client;
@@ -203,10 +227,20 @@ public sealed class PageSession : IAsyncDisposable
     {
         if (_client is null) throw new InvalidOperationException("The page session is not connected.");
 
-        var response = await _client.SendAsync(
-            "Page.captureScreenshot",
-            new { format = "png" },
-            cancellationToken).ConfigureAwait(false);
+        JsonElement response;
+        try
+        {
+            response = await _client.SendAsync(
+                "Page.captureScreenshot",
+                new { format = "png" },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (CdpException error) when (error.ErrorCode == -32601)
+        {
+            // Kitesurf implements a subset of CDP; a build without the screenshot domain must read as a
+            // capability gap, not a crash.
+            throw new InvalidOperationException("This engine build does not implement Page.captureScreenshot.", error);
+        }
 
         var data = response.GetProperty("data").GetString() ?? string.Empty;
         return Convert.FromBase64String(data);
@@ -349,7 +383,29 @@ public sealed class PageSession : IAsyncDisposable
             Diagnostics.Log($"page: first frame {image.PixelWidth}x{image.PixelHeight}");
         }
 
+        MeasureFrame();
         await AckFrameAsync(sessionId).ConfigureAwait(false);
+        Volatile.Write(ref _lastAckTimestamp, Stopwatch.GetTimestamp());
+    }
+
+    private void MeasureFrame()
+    {
+        var now = Stopwatch.GetTimestamp();
+        var lastAck = Volatile.Read(ref _lastAckTimestamp);
+
+        if (lastAck != 0)
+        {
+            var interval = (now - lastAck) * 1000.0 / Stopwatch.Frequency;
+            if (interval is > 0 and < 10_000) _frameIntervalMs = interval;
+        }
+
+        lock (_frameWindow)
+        {
+            _frameWindow.Enqueue(now);
+            var cutoff = now - 2 * Stopwatch.Frequency;
+            while (_frameWindow.Count > 0 && _frameWindow.Peek() < cutoff) _frameWindow.Dequeue();
+            Fps = _frameWindow.Count / 2.0;
+        }
     }
 
     private static BitmapSource Decode(byte[] jpeg)

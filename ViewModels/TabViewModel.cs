@@ -3,7 +3,9 @@
 // https://opensource.org/licenses/Apache-2.0
 
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Text.Json;
+using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Kitesurf.Windows.Core;
@@ -14,6 +16,7 @@ namespace Kitesurf.Windows.ViewModels;
 public sealed class TabViewModel : ObservableObject, IAsyncDisposable
 {
     private const int ConsoleCapacity = 400;
+    private const int MaxReconnectAttempts = 6;
 
     private readonly Dispatcher _dispatcher;
     private PageSession? _session;
@@ -33,6 +36,9 @@ public sealed class TabViewModel : ObservableObject, IAsyncDisposable
     private int _lastAppliedWidth;
     private int _lastAppliedHeight;
     private CancellationTokenSource? _loadingTimeout;
+    private bool _trafficEnabled;
+    private bool _reconnecting;
+    private int _reconnectAttempt;
     private bool _disposed;
 
     public TabViewModel(EngineEndpoint endpoint, string engineLabel, Dispatcher dispatcher, EngineProfile? profile = null)
@@ -131,12 +137,71 @@ public sealed class TabViewModel : ObservableObject, IAsyncDisposable
 
     public bool HasOverlay => !string.IsNullOrEmpty(_overlay);
 
+    public double Fps { get; private set; }
+
+    public double FrameIntervalMs { get; private set; }
+
+    public bool TrafficEnabled
+    {
+        get => _trafficEnabled;
+        set
+        {
+            if (!Set(ref _trafficEnabled, value)) return;
+            if (_session is not null) _session.TraceTraffic = value;
+        }
+    }
+
     public async Task OpenAsync(int width, int height)
     {
         _pendingWidth = Math.Max(320, width);
         _pendingHeight = Math.Max(240, height);
 
+        if (!await OpenSessionAsync())
+        {
+            Post(() => Title = "Connection failed");
+        }
+    }
+
+    private async Task<bool> OpenSessionAsync()
+    {
         var session = new PageSession(Endpoint, Profile);
+        Attach(session);
+        _session = session;
+
+        try
+        {
+            await session.ConnectAsync();
+            await session.ResizeAsync(_pendingWidth, _pendingHeight);
+            _lastAppliedWidth = _pendingWidth;
+            _lastAppliedHeight = _pendingHeight;
+            session.TraceTraffic = TrafficEnabled;
+
+            Post(() =>
+            {
+                IsConnected = true;
+                Overlay = null;
+                _reconnectAttempt = 0;
+                RaiseChanged();
+            });
+            return true;
+        }
+        catch (Exception error)
+        {
+            Post(() =>
+            {
+                IsConnected = false;
+                Overlay = error.Message;
+                RaiseChanged();
+            });
+
+            await session.DisposeAsync();
+            if (ReferenceEquals(_session, session)) _session = null;
+            return false;
+        }
+    }
+
+    private void Attach(PageSession session)
+    {
         session.FrameArrived += OnFrame;
         session.ConsoleLineArrived += line => Post(() => AppendConsole(line));
         session.UrlChanged += url => Post(() =>
@@ -155,32 +220,11 @@ public sealed class TabViewModel : ObservableObject, IAsyncDisposable
             }
         });
         session.SessionClosed += reason => Post(() => OnSessionClosed(reason));
-
-        _session = session;
-
-        try
+        session.TrafficObserved += (direction, payload) =>
         {
-            await session.ConnectAsync();
-            await session.ResizeAsync(_pendingWidth, _pendingHeight);
-            _lastAppliedWidth = _pendingWidth;
-            _lastAppliedHeight = _pendingHeight;
-            Post(() =>
-            {
-                IsConnected = true;
-                Overlay = null;
-                RaiseChanged();
-            });
-        }
-        catch (Exception error)
-        {
-            Post(() =>
-            {
-                IsConnected = false;
-                Overlay = error.Message;
-                Title = "Connection failed";
-                RaiseChanged();
-            });
-        }
+            if (!TrafficEnabled) return;
+            Post(() => AppendConsole(new ConsoleLine(DateTimeOffset.Now, direction, payload)));
+        };
     }
 
     public async Task ResizeAsync(int width, int height)
@@ -275,6 +319,33 @@ public sealed class TabViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>Puts the engine's current render on the Windows clipboard as a bitmap.</summary>
+    public async Task<bool> CopyFrameToClipboardAsync()
+    {
+        var bytes = await CaptureScreenshotAsync();
+        if (bytes is null || bytes.Length == 0) return false;
+
+        try
+        {
+            using var stream = new MemoryStream(bytes);
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+            image.StreamSource = stream;
+            image.EndInit();
+            image.Freeze();
+
+            await _dispatcher.InvokeAsync(() => Clipboard.SetImage(image));
+            return true;
+        }
+        catch (Exception error)
+        {
+            AppendConsole(new ConsoleLine(DateTimeOffset.Now, "error", "Clipboard copy failed: " + error.Message));
+            return false;
+        }
+    }
+
     public async Task<JsonElement> EvaluateAsync(string expression)
     {
         if (_session is null) throw new InvalidOperationException("The tab is not connected.");
@@ -298,16 +369,68 @@ public sealed class TabViewModel : ObservableObject, IAsyncDisposable
             Frame = frame.Image;
             _frameWidth = frame.PixelWidth;
             _frameHeight = frame.PixelHeight;
+            Fps = _session?.Fps ?? 0;
+            FrameIntervalMs = _session?.FrameIntervalMs ?? 0;
             FrameRendered?.Invoke(this);
         });
     }
 
     private void OnSessionClosed(string reason)
     {
+        if (_disposed) return;
+
         IsConnected = false;
         IsLoading = false;
-        Overlay = "Engine session closed — " + reason;
+        Diagnostics.Log($"page: session closed — {reason}");
+
+        var stale = _session;
+        _session = null;
+        if (stale is not null) _ = stale.DisposeAsync().AsTask();
+
+        if (!_reconnecting) _ = ReconnectAsync(reason);
         RaiseChanged();
+    }
+
+    /// <summary>
+    /// Workers can drop a long-lived WebSocket (idle timeout, CPU budget). The tab keeps its URL and
+    /// walks 1s → 2s → 4s → 8s → 15s before giving up, so a blip does not cost the user the page.
+    /// </summary>
+    private async Task ReconnectAsync(string reason)
+    {
+        if (_disposed || _reconnecting) return;
+        _reconnecting = true;
+        var target = Url;
+
+        try
+        {
+            for (var attempt = 1; attempt <= MaxReconnectAttempts && !_disposed; attempt++)
+            {
+                _reconnectAttempt = attempt;
+                var delay = TimeSpan.FromMilliseconds(Math.Min(1000 * Math.Pow(2, attempt - 1), 15000));
+                Post(() => Overlay = $"Connection lost — reconnecting in {delay.TotalSeconds:0}s (attempt {attempt}/{MaxReconnectAttempts})…");
+
+                await Task.Delay(delay).ConfigureAwait(false);
+                if (_disposed) return;
+
+                Post(() => Overlay = $"Reconnecting (attempt {attempt}/{MaxReconnectAttempts})…");
+                if (!await OpenSessionAsync().ConfigureAwait(false)) continue;
+
+                if (!string.IsNullOrEmpty(target)) await NavigateAsync(target).ConfigureAwait(false);
+                Post(() =>
+                {
+                    Overlay = null;
+                    AppendConsole(new ConsoleLine(DateTimeOffset.Now, "log", $"Reconnected after {attempt} attempt(s)."));
+                    RaiseChanged();
+                });
+                return;
+            }
+
+            Post(() => Overlay = $"Engine unreachable — {reason}. Press Reload to try again.");
+        }
+        finally
+        {
+            _reconnecting = false;
+        }
     }
 
     /// <summary>Console output produced by the shell itself (input echoes, evaluation results).</summary>

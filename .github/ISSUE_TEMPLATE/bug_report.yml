@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in the client does not behave as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: run `KitesurfBrowser.exe --selftest` and attach the log. If it fails, the problem
+        is in the client's protocol layer; if it passes, the problem is likely the engine or the page.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what the window actually did.
+      placeholder: Clicking Reload left the page black and the overlay said "reconnecting" forever.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Client version
+      description: Release tag or `FileVersion` of KitesurfBrowser.exe.
+      placeholder: v1.2.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine
+      options:
+        - Built-in demo engine (--demo)
+        - Local engine (127.0.0.1:8787)
+        - Cloudflare Worker with Cloudflare Access
+        - Cloudflare Worker without Access
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log
+      description: Paste the tail of `%APPDATA%\KitesurfBrowser\client.log` and the self-test JSON if you have it.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. KitesurfBrowser.exe --demo
+        2. Press F12
+        3. ...
+    validations:
+      required: false

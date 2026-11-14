@@ -32,6 +32,8 @@ internal static class SelfTest
 
             var probe = await EngineProbe.ProbeAsync(engine.Endpoint);
             Check("probe", probe.Ok, $"{probe.Browser} {probe.ProtocolVersion} in {probe.LatencyMs} ms");
+            Check("discovery: page socket", probe.PageSocketUrl?.Contains("/devtools/page/", StringComparison.Ordinal) == true,
+                probe.PageSocketUrl ?? "(none advertised)");
 
             await using var session = new PageSession(engine.Endpoint);
             var firstFrame = new TaskCompletionSource<ScreencastFrame>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -57,6 +59,10 @@ internal static class SelfTest
             await session.ResizeAsync(900, 600);
             var frame = await WithTimeout(firstFrame.Task, 5000);
             Check("screencast frame", frame is not null, $"{stats.Width}x{stats.Height}, {stats.Count} frame(s)");
+
+            await session.DispatchMouseAsync("mouseMoved", 400, 300, "none", 0, 0, 0);
+            await Task.Delay(400);
+            Check("telemetry", session.Fps > 0, $"{session.Fps:0.0} fps · {session.FrameIntervalMs:0} ms interval");
 
             await session.NavigateAsync("https://example.com/selftest");
             var didLoad = await WithTimeout(loaded.Task, 5000) == true;

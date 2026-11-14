@@ -20,9 +20,15 @@
                 </Border>
             </StackPanel>
             <Button HorizontalAlignment="Right" Style="{StaticResource NavButton}" Width="26" Height="26"
-                    Click="Clear_Click" ToolTip="Clear console">
+                    Click="Clear_Click" ToolTip="Clear console" AutomationProperties.Name="Clear console">
                 <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12" />
             </Button>
+            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Margin="0,0,34,0">
+                <ToggleButton Style="{StaticResource ChipToggle}" Content="CDP"
+                              IsChecked="{Binding SelectedTab.TrafficEnabled, Mode=TwoWay}"
+                              ToolTip="Echo raw CDP traffic into this console"
+                              AutomationProperties.Name="Raw CDP traffic" />
+            </StackPanel>
         </Grid>
 
         <Border Grid.Row="1" BorderBrush="{StaticResource LineSoftBrush}" BorderThickness="0,1,0,0">
@@ -74,6 +80,12 @@
                                                     <Setter Property="Foreground" Value="{StaticResource WarnBrush}" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Level}" Value="result">
+                                                    <Setter Property="Foreground" Value="{StaticResource MintBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Level}" Value="tx">
+                                                    <Setter Property="Foreground" Value="{StaticResource VioletBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Level}" Value="rx">
                                                     <Setter Property="Foreground" Value="{StaticResource MintBrush}" />
                                                 </DataTrigger>
                                             </Style.Triggers>

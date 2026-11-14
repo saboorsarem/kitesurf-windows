@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Engine bug or CDP behaviour
+    url: https://github.com/cloudflare/kitesurf/issues
+    about: Rendering, layout or JavaScript fidelity belongs to the engine, not this client.
+  - name: Self-test failed
+    url: https://github.com/saboorsarem/kitesurf-windows#verifying-a-download
+    about: Run KitesurfBrowser.exe --selftest first; the JSON report says which protocol step broke.

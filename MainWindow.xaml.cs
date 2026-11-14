@@ -160,6 +160,11 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 break;
 
+            case Key.S when ctrl && shift:
+                _viewModel.CopyFrameCommand.Execute(null);
+                e.Handled = true;
+                break;
+
             case Key.OemTilde when ctrl:
                 _viewModel.ToggleConsoleCommand.Execute(null);
                 e.Handled = true;
