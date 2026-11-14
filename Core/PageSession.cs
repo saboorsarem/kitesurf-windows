@@ -376,6 +376,10 @@ public sealed class PageSession : IAsyncDisposable
             return;
         }
 
+        // A frame decoded while the session is being torn down must not reach the shell; the tab may
+        // already belong to a replacement session.
+        if (Volatile.Read(ref _disposed) != 0) return;
+
         FrameArrived?.Invoke(new ScreencastFrame(image, image.PixelWidth, image.PixelHeight, scrollX, scrollY));
         if (!_loggedFirstFrame)
         {

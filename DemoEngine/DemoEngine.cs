@@ -100,6 +100,14 @@ public sealed class DemoEngine : IAsyncDisposable
             socketHadSecret = engine.LastSocketHadSecret,
         }));
 
+        // Test hook: one more frame goes out, then the socket closes while it is still in flight.
+        app.MapPost("/demo/drop-midframe", () =>
+        {
+            DemoPageSession.ForceNextFrame = true;
+            DemoPageSession.DropAfterNextFrame = true;
+            return Results.Json(new { armed = true });
+        });
+
         // Test hook: drop every live page socket, the way a Worker idle timeout would.
         app.MapPost("/demo/drop", async () =>
         {

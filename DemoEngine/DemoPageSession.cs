@@ -28,6 +28,11 @@ internal sealed class DemoPageSession
     private bool _streaming;
     private bool _dirty;
     private Task? _pump;
+
+    /// <summary>Test hooks: emit one frame even when the page is idle, then drop the socket.</summary>
+    public static bool ForceNextFrame;
+
+    public static bool DropAfterNextFrame;
     private readonly List<HistoryEntry> _history = new();
     private int _historyIndex = -1;
 
@@ -369,8 +374,10 @@ internal sealed class DemoPageSession
                 int width, height, quality, frameId;
                 lock (_stateGate)
                 {
-                    if (!_streaming || !_dirty || _framesInFlight >= _maxFramesInFlight) continue;
+                    var forced = ForceNextFrame;
+                    if (!_streaming || (!_dirty && !forced) || _framesInFlight >= _maxFramesInFlight) continue;
                     _dirty = false;
+                    if (forced) ForceNextFrame = false;
                     _framesInFlight++;
                     _frameSequence++;
                     frameId = _frameSequence;
@@ -395,6 +402,21 @@ internal sealed class DemoPageSession
                         ["timestamp"] = Environment.TickCount64 / 1000.0,
                     },
                 }).ConfigureAwait(false);
+
+                if (DropAfterNextFrame)
+                {
+                    DropAfterNextFrame = false;
+                    try
+                    {
+                        await _socket.CloseAsync(WebSocketCloseStatus.EndpointUnavailable, "demo: dropped mid-frame", CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        // Client already gone.
+                    }
+
+                    return;
+                }
             }
         }
         catch (OperationCanceledException)

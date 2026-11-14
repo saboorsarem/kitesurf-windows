@@ -35,6 +35,7 @@ public sealed class TabViewModel : ObservableObject, IAsyncDisposable
     private int _pendingHeight = 800;
     private int _lastAppliedWidth;
     private int _lastAppliedHeight;
+    private readonly FrameGate _frameGate = new();
     private CancellationTokenSource? _loadingTimeout;
     private bool _trafficEnabled;
     private bool _reconnecting;
@@ -202,30 +203,56 @@ public sealed class TabViewModel : ObservableObject, IAsyncDisposable
 
     private void Attach(PageSession session)
     {
-        session.FrameArrived += OnFrame;
-        session.ConsoleLineArrived += line => Post(() => AppendConsole(line));
-        session.UrlChanged += url => Post(() =>
+        // Every callback carries the token of the session that produced it. Opening a replacement
+        // session retires this token, so work still in flight from a dropped socket is dropped.
+        var token = _frameGate.Open();
+
+        session.FrameArrived += frame => OnFrame(token, frame);
+        session.ConsoleLineArrived += line =>
         {
-            Url = url;
-            RaiseChanged();
-        });
-        session.TitleChanged += title => Post(() => Title = title);
-        session.LoadingChanged += loading => Post(() =>
+            if (!IsCurrent(token)) return;
+            Post(() => AppendConsole(line));
+        };
+        session.UrlChanged += url =>
         {
-            IsLoading = loading;
-            if (!loading)
+            if (!IsCurrent(token)) return;
+            Post(() =>
             {
-                StopLoadingTimeout();
-                _ = RefreshHistoryAsync();
-            }
-        });
-        session.SessionClosed += reason => Post(() => OnSessionClosed(reason));
+                Url = url;
+                RaiseChanged();
+            });
+        };
+        session.TitleChanged += title =>
+        {
+            if (!IsCurrent(token)) return;
+            Post(() => Title = title);
+        };
+        session.LoadingChanged += loading =>
+        {
+            if (!IsCurrent(token)) return;
+            Post(() =>
+            {
+                IsLoading = loading;
+                if (!loading)
+                {
+                    StopLoadingTimeout();
+                    _ = RefreshHistoryAsync();
+                }
+            });
+        };
+        session.SessionClosed += reason =>
+        {
+            if (!IsCurrent(token)) return;
+            Post(() => OnSessionClosed(reason));
+        };
         session.TrafficObserved += (direction, payload) =>
         {
-            if (!TrafficEnabled) return;
+            if (!TrafficEnabled || !IsCurrent(token)) return;
             Post(() => AppendConsole(new ConsoleLine(DateTimeOffset.Now, direction, payload)));
         };
     }
+
+    private bool IsCurrent(int token) => !_disposed && _frameGate.Accepts(token);
 
     public async Task ResizeAsync(int width, int height)
     {
@@ -362,10 +389,18 @@ public sealed class TabViewModel : ObservableObject, IAsyncDisposable
 
     public Task InsertTextAsync(string text) => _session?.InsertTextAsync(text) ?? Task.CompletedTask;
 
-    private void OnFrame(ScreencastFrame frame)
+    private void OnFrame(int token, ScreencastFrame frame)
     {
+        if (!IsCurrent(token))
+        {
+            Diagnostics.Log($"page: dropped a frame from retired session token {token}");
+            return;
+        }
+
         Post(() =>
         {
+            if (!IsCurrent(token)) return;
+
             Frame = frame.Image;
             _frameWidth = frame.PixelWidth;
             _frameHeight = frame.PixelHeight;

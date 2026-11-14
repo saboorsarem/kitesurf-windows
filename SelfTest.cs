@@ -145,6 +145,14 @@ internal static class SelfTest
             Check("secret: dpapi round-trip",
                 protectedBlob is not null && protectedBlob != "token-value" && SecretProtector.Unprotect(protectedBlob) == "token-value",
                 "blob at rest differs from plaintext");
+
+            // A frame from a replaced session must be rejected before it can paint over the new one.
+            var gate = new FrameGate();
+            var retiredToken = gate.Open();
+            var liveToken = gate.Open();
+            Check("reconnect: stale frame rejected",
+                !gate.Accepts(retiredToken) && gate.Accepts(liveToken),
+                $"retired {retiredToken} rejected, live {liveToken} accepted");
         }
         catch (Exception error)
         {
