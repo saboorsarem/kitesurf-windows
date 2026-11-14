@@ -37,8 +37,6 @@ This project provides a **dedicated native Windows client** that connects direct
 | **Built-in Demo & Self-Test** | Ships with an embedded synthetic CDP engine (`--demo`) and an automated headless protocol verifier (`--selftest`). |
 | **Zero-Fallback Architecture** | Renders strictly what Kitesurf's Blitz/Stylo/Boa pipeline produces—never falls back to WebView2 or embedded Chromium. |
 
-![Connecting an engine](docs/welcome.png)
-
 ---
 
 ## Connecting to a Kitesurf Engine
